@@ -1,0 +1,121 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─── Backend Tests & Lint ─────────────────────────────────────────────
+  backend:
+    name: Backend CI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint with ruff
+        run: |
+          pip install ruff
+          ruff check app/ --ignore E501
+
+      - name: Check imports
+        run: python -c "from app.config import *; from app.models import *; from app.services.rule_engine import load_policy_terms; print('All imports OK')"
+
+      - name: Test rule engine
+        run: python -c "
+          from app.services.rule_engine import *
+          policy = load_policy_terms()
+          
+          # TC001 - Simple consultation should pass eligibility
+          member = {'member_id': 'EMP001', 'join_date': '2024-01-15', 'policy_status': 'active'}
+          ok, reasons, checks = check_eligibility(member, '2024-11-01', policy)
+          assert ok, f'TC001 eligibility failed: {reasons}'
+          
+          # TC003 - Per-claim limit exceeded
+          ok, approved, deductions, reasons, checks = check_limits(7500, 'consultation', 0, policy)
+          assert not ok, 'TC003 should exceed per-claim limit'
+          assert 'PER_CLAIM_EXCEEDED' in reasons
+          
+          # TC004 - Missing documents
+          ok, reasons, checks = check_documents([])
+          assert not ok, 'TC004 should fail document check'
+          assert 'MISSING_DOCUMENTS' in reasons
+          
+          # TC009 - Excluded treatment
+          ok, reasons, items, checks = check_coverage('Obesity - BMI 35', ['Bariatric consultation', 'diet plan'], policy)
+          assert not ok, 'TC009 should fail coverage check'
+          
+          print('All rule engine tests passed!')
+          "
+
+  # ─── Frontend Build & Lint ───────────────────────────────────────────
+  frontend:
+    name: Frontend CI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://your-backend.onrender.com
+
+  # ─── Deploy Backend to Render ────────────────────────────────────────
+  deploy-backend:
+    name: Deploy Backend (Render)
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Trigger Render Deploy
+        run: |
+          echo "Backend auto-deploys from Render's GitHub integration."
+          echo "No manual trigger needed if Render is connected to this repo."
+          echo "See deployment guide in docs/deployment.md"
+
+  # ─── Deploy Frontend to Vercel ───────────────────────────────────────
+  deploy-frontend:
+    name: Deploy Frontend (Vercel)
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Trigger Vercel Deploy
+        run: |
+          echo "Frontend auto-deploys from Vercel's GitHub integration."
+          echo "No manual trigger needed if Vercel is connected to this repo."
+          echo "See deployment guide in docs/deployment.md"
