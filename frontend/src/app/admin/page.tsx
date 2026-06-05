@@ -78,9 +78,9 @@ export default function AdminPage() {
           </div>
           <div className="space-y-3">
             <EditField label="Annual Limit (₹)" value={policyEdits.annual_limit} disabled={!editMode}
-              onChange={(v) => setPolicyEdits({ ...policyEdits, annual_limit: Number(v) })} />
+              onChange={(v: string) => setPolicyEdits({ ...policyEdits, annual_limit: Number(v) })} />
             <EditField label="Per-Claim Limit (₹)" value={policyEdits.per_claim_limit} disabled={!editMode}
-              onChange={(v) => setPolicyEdits({ ...policyEdits, per_claim_limit: Number(v) })} />
+              onChange={(v: string) => setPolicyEdits({ ...policyEdits, per_claim_limit: Number(v) })} />
             {policy && (
               <>
                 <div className="flex justify-between text-sm p-2 bg-surface rounded-lg">
